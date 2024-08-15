@@ -6,12 +6,15 @@ s3_client = boto3.client('s3')
 emr_client = boto3.client('emr')
 
 def handler(event, context):
-    # Extract the S3 bucket and object key from the SQS message
+    # Get the bucket names from environment variables
+    source_bucket_name = os.environ['SOURCE_BUCKET']
+    target_bucket_name = os.environ['TARGET_BUCKET']
+
+    # Process SQS messages
     for record in event['Records']:
         payload = json.loads(record['body'])
-        bucket_name = payload['Records'][0]['s3']['bucket']['name']
         object_key = payload['Records'][0]['s3']['object']['key']
-        
+
         # Trigger EMR Cluster
         cluster_id = emr_client.run_job_flow(
             Name='MyEMRCluster',
@@ -44,8 +47,8 @@ def handler(event, context):
                     'Jar': 'command-runner.jar',
                     'Args': [
                         's3-dist-cp',
-                        '--src', f's3://{bucket_name}/{object_key}',
-                        '--dest', f's3://{os.environ["TARGET_BUCKET"]}/processed/'
+                        '--src', f's3://{source_bucket_name}/{object_key}',
+                        '--dest', f's3://{target_bucket_name}/processed/'
                     ]
                 }
             }],
