@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-from aws_cdk import core as cdk
-from pipeline_stack import PipelineStack
+import os
+import aws_cdk as cdk
+from emr_pipeline_stack import EmrPipelineStack
 
 app = cdk.App()
-PipelineStack(app, "PipelineStack")
+EmrPipelineStack(app, "EmrPipelineStack")
 
 app.synth()
