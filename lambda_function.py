@@ -1,54 +1,55 @@
+import json
 import boto3
 import os
 
-emr_client = boto3.client('emr')
 s3_client = boto3.client('s3')
+emr_client = boto3.client('emr')
 
-def handler(event, context):
-    # Retrieve the output bucket name from environment variables
-    output_bucket_name = os.getenv('OUTPUT_BUCKET_NAME')
+def lambda_handler(event, context):
+    # Get the S3 bucket and key details from the event
+    records = event['Records']
     
-    # Here, you will trigger your EMR cluster or handle completion
-    if event.get("detail-type") == "EMR Cluster State Change" and event["detail"]["state"] == "TERMINATED":
-        # Handle EMR Cluster completion
-        # This is where the processed files would be moved to the output S3 bucket
-        s3_client.put_object(Bucket=output_bucket_name, Key="result.csv", Body=b"Processed data...")
-        return {
-            'statusCode': 200,
-            'body': 'Processing complete and result stored in output S3 bucket.'
-        }
-    
-    # Logic for starting the EMR Cluster
-    response = emr_client.run_job_flow(
-        Name='MyJobFlow',
-        Instances={
-            'InstanceGroups': [
+    for record in records:
+        s3_bucket = record['s3']['bucket']['name']
+        s3_key = record['s3']['object']['key']
+        
+        # Create EMR cluster
+        response = emr_client.run_job_flow(
+            Name='EMR-Cluster-For-Processing',
+            ReleaseLabel='emr-6.5.0',
+            Instances={
+                'InstanceGroups': [
+                    {
+                        'Name': 'Master nodes',
+                        'Market': 'ON_DEMAND',
+                        'InstanceRole': 'MASTER',
+                        'InstanceType': 'm5.xlarge',
+                        'InstanceCount': 1,
+                    }
+                ],
+                'KeepJobFlowAliveWhenNoSteps': False,
+                'TerminationProtected': False,
+            },
+            Steps=[
                 {
-                    'Name': 'Master nodes',
-                    'Market': 'ON_DEMAND',
-                    'InstanceRole': 'MASTER',
-                    'InstanceType': 'm5.xlarge',
-                    'InstanceCount': 1,
-                },
-                {
-                    'Name': 'Core nodes',
-                    'Market': 'ON_DEMAND',
-                    'InstanceRole': 'CORE',
-                    'InstanceType': 'm5.xlarge',
-                    'InstanceCount': 2,
+                    'Name': 'Process S3 Files',
+                    'ActionOnFailure': 'TERMINATE_CLUSTER',
+                    'HadoopJarStep': {
+                        'Jar': 'command-runner.jar',
+                        'Args': [
+                            's3-dist-cp',
+                            '--src=s3://{}/{}'.format(s3_bucket, s3_key),
+                            '--dest=s3://{}'.format(os.getenv('DESTINATION_BUCKET'))
+                        ]
+                    }
                 }
             ],
-            'Ec2KeyName': 'your-ec2-key-name',
-            'KeepJobFlowAliveWhenNoSteps': False,
-        },
-        Steps=[],
-        JobFlowRole='EMR_EC2_DefaultRole',
-        ServiceRole='EMR_DefaultRole',
-        ReleaseLabel='emr-6.7.0',
-        LogUri=f's3://{output_bucket_name}/emr-logs/'
-    )
-    
-    return {
-        'statusCode': 200,
-        'body': f'EMR cluster created with id: {response["JobFlowId"]}'
-    }
+            JobFlowRole='EMR_EC2_DefaultRole',
+            ServiceRole='EMR_DefaultRole',
+            VisibleToAllUsers=True
+        )
+        
+        return {
+            'statusCode': 200,
+            'body': json.dumps('EMR cluster created and processing started.')
+        }
