@@ -1,19 +1,30 @@
+import os
 from aws_cdk import (
     Stack, aws_s3 as s3, aws_sqs as sqs, aws_lambda as _lambda,
-    aws_s3_notifications as s3n, aws_iam as iam, aws_emr as emr
+    aws_s3_notifications as s3n, aws_iam as iam, aws_emr as emr, aws_lambda_event_sources as _lambda_event_sources
 )
 from constructs import Construct
+from dotenv import load_dotenv
 
-class EmrPipelineStack(Stack):
+class MyPipelineStack(Stack):
 
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
+        # Load environment variables
+        load_dotenv()
+
+        # Fetch bucket names from environment variables
+        source_bucket_name = os.getenv('SOURCE_BUCKET_NAME', 'default-source-bucket')
+        target_bucket_name = os.getenv('TARGET_BUCKET_NAME', 'default-target-bucket')
+
         # Create Source S3 Bucket
-        source_bucket = s3.Bucket(self, "SourceBucket")
+        source_bucket = s3.Bucket(self, "SourceBucket",
+                                  bucket_name=source_bucket_name)
 
         # Create Target S3 Bucket for processed data
-        target_bucket = s3.Bucket(self, "TargetBucket")
+        target_bucket = s3.Bucket(self, "TargetBucket",
+                                  bucket_name=target_bucket_name)
 
         # Create SQS Queue
         queue = sqs.Queue(self, "S3ToSQSQueue")
@@ -38,7 +49,7 @@ class EmrPipelineStack(Stack):
         emr_lambda = _lambda.Function(self, "EMRClusterTriggerLambda",
             runtime=_lambda.Runtime.PYTHON_3_9,
             handler="lambda_function.handler",
-            code=_lambda.Code.from_asset("lambda"),
+            code=_lambda.Code.from_asset("lambda"),  # Path to the lambda folder
             role=lambda_role,
             environment={
                 'SOURCE_BUCKET': source_bucket.bucket_name,
